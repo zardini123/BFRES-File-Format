@@ -84,7 +84,7 @@ class IndexGroupDataEntry:
 
 @dataclass
 class IndexGroup:
-    entries = []
+    entries = None
 
     def convert_binary_to_IndexGroup(self, binary_data: bytes, indexGroupStartOffset: int, bfres_instance: BFRES):
         #######################
@@ -95,6 +95,8 @@ class IndexGroup:
         # Number of entries (tree nodes) in the group, excluding the root entry (same as possibly available file counts in headers).
         numOfTreeNodes = indexGroupHeader[1]
         firstTreeNodeEntryOffset = indexGroupStartOffset + 0x08
+
+        print("Number of nodes: ", numOfTreeNodes + 1)
 
         # Add one to numOfTreeNodes to include root entry
         for t in range(numOfTreeNodes + 1):
@@ -113,7 +115,13 @@ class IndexGroup:
             entryName = "".join(map(chr, struct.unpack(">10s", binary_data[treeNodeEntryNameOffset:treeNodeEntryNameOffset + 10])[0]))
 
             indexGroupEntry = IndexGroupDataEntry(search_value = treeNodeEntry[0], left_index = treeNodeEntry[1], right_index = treeNodeEntry[2], name_of_entry = entryName)
-            self.add_entry(indexGroupEntry)
+
+            # Have entries as NoneType and initalize in function as if entires was set to {} in class, the instance is shared
+            if not self.entries:
+                self.entries = []
+
+            self.entries.append(indexGroupEntry)
+            last_index = len(self.entries) - 1
 
             print(treeNodeEntryDataOffset)
 
@@ -126,26 +134,21 @@ class IndexGroup:
 
                 # Subfiles
                 if dataEntryIdentifier[0] == b'FSCN':
-                    self.data = FSCN(bfres_instance)
-                    self.data.convert_binary_to_FSCN(binary_data, treeNodeEntryDataOffset)
+                    self.entries[last_index].data = FSCN(bfres_instance)
+                    self.entries[last_index].data.convert_binary_to_FSCN(binary_data, treeNodeEntryDataOffset)
                     pass
 
                 # Sections
                 if dataEntryIdentifier[0] == b'FCAM':
-                    self.data = FCAM(bfres_instance)
-                    self.data.convert_binary_to_FCAM(binary_data, treeNodeEntryDataOffset)
+                    self.entries[last_index].data = FCAM(bfres_instance)
+                    self.entries[last_index].data.convert_binary_to_FCAM(binary_data, treeNodeEntryDataOffset)
                     pass
 
+                pass
+
+            print("Index Group type: ", type(self.entries[last_index].data))
+
             pass
-
-    def add_entry(self, new_entry: IndexGroupDataEntry):
-        self.entries.append(new_entry)
-
-    def get_number_of_entries_without_root(self):
-        return len(self.entries) - 1
-
-    def get_root_entry(self):
-        return self.entries[0]
 
 @dataclass
 class FSCN(Subfile):
@@ -170,9 +173,10 @@ class FSCN(Subfile):
 
         fcam_index_group_offset = offset_to_FSCN_Section + 0x14 + fscn_header[7]
 
+        print("FCAM Count: ", fcam_count)
         if fcam_count > 0:
-            fcam_index_group = IndexGroup()
-            fcam_index_group.convert_binary_to_IndexGroup(binary_data = binary_data, indexGroupStartOffset = fcam_index_group_offset, bfres_instance = self.parent_bfres_instance)
+            self.fcam_index_group = IndexGroup()
+            self.fcam_index_group.convert_binary_to_IndexGroup(binary_data, fcam_index_group_offset, self.parent_bfres_instance)
 
         # fcam_header = struct.unpack(">4s H xx i B x H I I I I I")
         pass
@@ -181,12 +185,18 @@ class FSCN(Subfile):
 
 @dataclass
 class CameraAnimationData:
-    offset_to_value_dictonary = {}
-    name_to_offset_dictonary = {}
+    offset_to_value_dictonary = None
+    name_to_offset_dictonary = None
 
     def convert_binary_to_CameraAnimationData(self, binary_data: bytes, offset_to_cameraAnimationData_Section: int):
         cam_animation_data = struct.unpack(">f f f f 3f 3f f", binary_data[offset_to_cameraAnimationData_Section:offset_to_cameraAnimationData_Section + 0x2C])
         print(cam_animation_data)
+
+        if not self.offset_to_value_dictonary:
+            self.offset_to_value_dictonary = {}
+
+        if not self.name_to_offset_dictonary:
+            self.name_to_offset_dictonary = {}
 
         self.offset_to_value_dictonary[0x00] = cam_animation_data[0]
         self.name_to_offset_dictonary["near clipping plane distance"] = 0x00
@@ -246,9 +256,9 @@ class Curve_Data_Type(Enum):
 
 @dataclass
 class Curve():
-    frame_data_type = Frame_Data_Type.SINGLE
-    key_data_type = Key_Data_Type.SINGLE
-    curve_data_type = Curve_Data_Type.CUBIC_SINGLE
+    frame_data_type = None
+    key_data_type = None
+    curve_data_type = None
 
     animation_data_offset = 0
 
@@ -262,6 +272,9 @@ class Curve():
     data_delta = 0.0
 
     elements_per_key = 0
+
+    frames = None
+    keys = None
 
     def frame_data_type_to_struct_format_string(self, frame_data_type: Frame_Data_Type):
         if frame_data_type == Frame_Data_Type.SINGLE:
@@ -368,6 +381,9 @@ class Curve():
             keys[i] += self.data_offset
             print(keys[i:i + self.elements_per_key])
 
+
+        self.frames = frame_values
+        self.keys = keys
         # print("Keys: ", keys)
 
         pass
@@ -380,7 +396,7 @@ class FCAM(Subfile):
 
     cam_animation_data = None
 
-    offset_to_curve_array_dictonary = defaultdict(list)
+    offset_to_curve_array_dictonary = None
 
     def convert_binary_to_FCAM(self, binary_data: bytes, offset_to_FCAM_Section: int):
         #######################
@@ -416,6 +432,9 @@ class FCAM(Subfile):
         print("Frame count: ", frame_count)
         print("Curve count: ", curve_count)
         print("Baked length: ", baked_length)
+
+        if not self.offset_to_curve_array_dictonary:
+            self.offset_to_curve_array_dictonary = defaultdict(list)
 
         for i in range(curve_count):
             curve = Curve()
@@ -453,6 +472,12 @@ def main(argv):
         fileContent = file.read()
 
         bfres_file = BFRES(binary_data = fileContent)
+
+        fcam_instance = bfres_file.file_type_index_groups[10].entries[1].data.fcam_index_group.entries[1].data
+
+        pos_x_offset = fcam_instance.cam_animation_data.name_to_offset_dictonary["position (x)"]
+        pos_x_curves = fcam_instance.offset_to_curve_array_dictonary[pos_x_offset]
+        print(pos_x_curves[0])
 
 if __name__ == "__main__":
    main(sys.argv[1:])
