@@ -5,6 +5,11 @@ import array
 from enum import Enum
 from dataclasses import dataclass
 
+from enum import Enum
+from collections import defaultdict
+
+import numpy as np
+
 SubfileTypes = {
     0: "FMDL",
     1: "FTEX",
@@ -176,28 +181,194 @@ class FSCN(Subfile):
 
 @dataclass
 class CameraAnimationData:
-    near_clipping_plane = 0
-    far_clipping_plane = 0
-    aspect_ratio = 0
-    height_offset_or_fov = 0
-    position = []
-    rotation_aim_direction = []
-    twist = 0
+    offset_to_value_dictonary = {}
+    name_to_offset_dictonary = {}
 
     def convert_binary_to_CameraAnimationData(self, binary_data: bytes, offset_to_cameraAnimationData_Section: int):
         cam_animation_data = struct.unpack(">f f f f 3f 3f f", binary_data[offset_to_cameraAnimationData_Section:offset_to_cameraAnimationData_Section + 0x2C])
         print(cam_animation_data)
 
-        near_clipping_plane = cam_animation_data[0]
-        far_clipping_plane = cam_animation_data[1]
-        aspect_ratio = cam_animation_data[2]
-        height_offset_or_fov = cam_animation_data[3]
-        position = cam_animation_data[4:7]
-        rotation = cam_animation_data[7:10]
-        twist = cam_animation_data[10]
+        self.offset_to_value_dictonary[0x00] = cam_animation_data[0]
+        self.name_to_offset_dictonary["near clipping plane distance"] = 0x00
 
-        print(position)
-        print(rotation)
+        self.offset_to_value_dictonary[0x04] = cam_animation_data[1]
+        self.name_to_offset_dictonary["far clipping plane distance"] = 0x04
+
+        self.offset_to_value_dictonary[0x08] = cam_animation_data[2]
+        self.name_to_offset_dictonary["aspect ratio"] = 0x08
+
+        self.offset_to_value_dictonary[0x0C] = cam_animation_data[3]
+        self.name_to_offset_dictonary["height offset or fov"] = 0x0C
+
+        self.offset_to_value_dictonary[0x10] = cam_animation_data[4]
+        self.name_to_offset_dictonary["position (x)"] = 0x10
+        self.offset_to_value_dictonary[0x14] = cam_animation_data[5]
+        self.name_to_offset_dictonary["position (y)"] = 0x14
+        self.offset_to_value_dictonary[0x18] = cam_animation_data[6]
+        self.name_to_offset_dictonary["position (z)"] = 0x18
+
+        self.offset_to_value_dictonary[0x1C] = cam_animation_data[7]
+        self.name_to_offset_dictonary["rotation (x)"] = 0x1C
+        self.offset_to_value_dictonary[0x20] = cam_animation_data[8]
+        self.name_to_offset_dictonary["rotation (y)"] = 0x20
+        self.offset_to_value_dictonary[0x24] = cam_animation_data[9]
+        self.name_to_offset_dictonary["rotation (z)"] = 0x24
+
+        self.offset_to_value_dictonary[0x28] = cam_animation_data[10]
+        self.name_to_offset_dictonary["twist"] = 0x28
+
+        print(self.offset_to_value_dictonary)
+        print(self.name_to_offset_dictonary)
+
+        pass
+
+    pass
+
+class Frame_Data_Type(Enum):
+    SINGLE = 0
+    FLOAT_16_BIT = 1
+    BYTE = 2
+
+class Key_Data_Type(Enum):
+    SINGLE = 0
+    INT16 = 1
+    SBYTE = 2
+
+class Curve_Data_Type(Enum):
+    CUBIC_SINGLE = 0
+    LINEAR_SINGLE = 1
+    BAKED_SINGLE = 2
+    # TODO: What is and where is 3?
+    STEP_INTEGER = 4
+    BAKED_INTEGER = 5
+    STEP_BOOLEAN = 6
+    BAKED_BOOLEAN = 7
+
+@dataclass
+class Curve():
+    frame_data_type = Frame_Data_Type.SINGLE
+    key_data_type = Key_Data_Type.SINGLE
+    curve_data_type = Curve_Data_Type.CUBIC_SINGLE
+
+    animation_data_offset = 0
+
+    start_frame = 0.0
+    end_frame = 0.0
+
+    data_scale = 0.0
+    data_offset = 0.0
+
+    # if BFRES version >= 3.4.0.0
+    data_delta = 0.0
+
+    elements_per_key = 0
+
+    def frame_data_type_to_struct_format_string(self, frame_data_type: Frame_Data_Type):
+        if frame_data_type == Frame_Data_Type.SINGLE:
+            return ('f', 4)
+        elif frame_data_type == Frame_Data_Type.FLOAT_16_BIT:
+            return ('2s', 2)
+        elif frame_data_type == Frame_Data_Type.BYTE:
+            return ('B', 1)
+
+        raise ValueError('Unkown Frame_Data_Type value passed')
+
+    def key_data_type_to_struct_format_string(self, key_data_type: Key_Data_Type):
+        if key_data_type == Key_Data_Type.SINGLE:
+            return ('f', 4)
+        elif key_data_type == Key_Data_Type.INT16:
+            return ('h', 2)
+        elif key_data_type == Key_Data_Type.SBYTE:
+            return ('b', 1)
+
+        raise ValueError('Unkown Key_Data_Type value passed')
+
+    def elements_per_key(self, curve_data_type: Curve_Data_Type):
+        if curve_data_type == Curve_Data_Type.CUBIC_SINGLE:
+            return 4
+        elif curve_data_type == Curve_Data_Type.LINEAR_SINGLE:
+            return 2
+        elif curve_data_type >= Curve_Data_Type.BAKED_SINGLE and curve_data_type <= Curve_Data_Type.BAKED_BOOLEAN:
+            return 1
+
+        raise ValueError('Unkown Curve_Data_Type value passed')
+
+    def convert_binary_to_Curve(self, binary_data: bytes, offset_to_curve: int):
+        #######################
+        # Curve Header
+
+        # TODO: Implement bfres version curve header for less than 3.4.0.0
+        # if parent_bfres_instance.version >= [3,4,0,0]
+        #     print('is great')
+        curve_header = struct.unpack(">H H I f f f f f i i", binary_data[offset_to_curve:offset_to_curve + 0x24])
+        print(curve_header)
+
+        i = curve_header[0]
+
+        self.frame_data_type = Frame_Data_Type(i >> 0 & 0x3)
+        self.key_data_type = Key_Data_Type(i >> 2 & 0x3)
+        self.curve_data_type = Curve_Data_Type(i >> 4 & 0x7)
+        print("Frames Data Type: ", self.frame_data_type)
+        print("Keys Data Type: ", self.key_data_type)
+        print("Interpolation Type: ", self.curve_data_type)
+
+        self.start_frame = curve_header[3]
+        self.end_frame = curve_header[4]
+
+        self.data_scale = curve_header[5]
+        self.data_offset = curve_header[6]
+        print(self.data_scale, self.data_offset)
+
+        # For whatever animation data struct this is linked to,
+        # this value is the offset from the start of that struct that this curve controls
+        self.animation_data_offset = curve_header[2]
+        print(hex(self.animation_data_offset))
+
+        key_count = curve_header[1]
+        print("Key count: ", key_count)
+
+        frame_array_offset = offset_to_curve + 0x1C + curve_header[8]
+        key_array_offset = offset_to_curve + 0x20 + curve_header[9]
+
+        frame_format, frame_format_size = self.frame_data_type_to_struct_format_string(self.frame_data_type)
+        frame_count = key_count
+
+        if self.frame_data_type == Frame_Data_Type.FLOAT_16_BIT:
+            frame_format = 's'
+            frame_count *= 2
+
+        format_string = ">" + str(frame_count) + frame_format
+        frames = struct.unpack(format_string, binary_data[frame_array_offset:frame_array_offset + (frame_format_size * key_count)])
+        frame_values = frames[0]
+
+        if self.frame_data_type == Frame_Data_Type.FLOAT_16_BIT:
+            bytes_obj = frame_values
+            # Split into pairs for easier parsing
+            L = [bytes_obj[i * 2:(i * 2) + 2] for i in range(len(bytes_obj[::2]))]
+
+            frame_values = []
+            for pair in L:
+                pair_flipped = bytes([c for t in zip(pair[1::2], pair[::2]) for c in t])
+                float16 = np.frombuffer(pair_flipped, dtype = np.float16) / (1 << 5)
+                frame_values.append(float16[0])
+
+        frame_values = list(frame_values)
+        print("Frames: ", frame_values)
+
+        key_format, key_format_size = self.key_data_type_to_struct_format_string(self.key_data_type)
+        self.elements_per_key = self.elements_per_key(self.curve_data_type)
+
+        format_string = ">" + str(key_count * self.elements_per_key) + key_format
+        keys = struct.unpack(format_string, binary_data[key_array_offset:key_array_offset + (key_format_size * self.elements_per_key * key_count)])
+        keys = list(keys)
+
+        # Granularity of keys will be garbage if INT16 or SBYTE.  Data_scale and data_offset fixes that
+        keys = [(x * self.data_scale) for x in keys]
+        for i in range(0, len(keys), self.elements_per_key):
+            keys[i] += self.data_offset
+            print(keys[i:i + self.elements_per_key])
+
+        # print("Keys: ", keys)
 
         pass
 
@@ -208,6 +379,8 @@ class FCAM(Subfile):
     magic = "FCAM"
 
     cam_animation_data = None
+
+    offset_to_curve_array_dictonary = defaultdict(list)
 
     def convert_binary_to_FCAM(self, binary_data: bytes, offset_to_FCAM_Section: int):
         #######################
@@ -224,7 +397,9 @@ class FCAM(Subfile):
 
         # TODO: Flags
 
+        print("CameraAnimationData:")
         cam_animation_data_offset = offset_to_FCAM_Section + 0x1C + fcam_header[8]
+        print(cam_animation_data_offset)
 
         self.cam_animation_data = CameraAnimationData()
         self.cam_animation_data.convert_binary_to_CameraAnimationData(binary_data, cam_animation_data_offset)
@@ -242,21 +417,14 @@ class FCAM(Subfile):
         print("Curve count: ", curve_count)
         print("Baked length: ", baked_length)
 
-        # TODO: Implement bfres version curve header for less than 3.4.0.0
-        # if parent_bfres_instance.version >= [3,4,0,0]
-        #     print('is great')
-
         for i in range(curve_count):
+            curve = Curve()
+
             current_curve_offset = curve_array_start_offset + (i * 0x24)
+            curve.convert_binary_to_Curve(binary_data, current_curve_offset)
 
-            curve_header = struct.unpack(">H H I f f f f f i i", binary_data[current_curve_offset:current_curve_offset + 0x24])
-            print(format(curve_header[0], 'b')[::-1])
-            print(curve_header)
-
-            i = curve_header[0]
-            print("Frames Data Type: ", i >> 0 & 0x3)
-            print("Keys Data Type: ", i >> 2 & 0x3)
-            print("Interpolation Type: ", i >> 4 & 0x7)
+            self.offset_to_curve_array_dictonary[curve.animation_data_offset].append(curve)
+            print(list(self.cam_animation_data.name_to_offset_dictonary.keys())[list(self.cam_animation_data.name_to_offset_dictonary.values()).index(curve.animation_data_offset)])
 
             pass
 
