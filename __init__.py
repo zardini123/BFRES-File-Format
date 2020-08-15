@@ -87,6 +87,7 @@ class Import_BFRES(Operator, ImportHelper):
                 obj.location.x = pos_x_curves[0].keys[key_index]
 
                 frame = (pos_x_curves[0].frames[frame_index] * diff) + start_frame
+                print(frame)
                 frame = int(round(frame))
                 obj.keyframe_insert(data_path="location", index=0, frame=frame)
 
@@ -102,6 +103,7 @@ class Import_BFRES(Operator, ImportHelper):
                 obj.location.y = pos_y_curves[0].keys[key_index]
 
                 frame = (pos_y_curves[0].frames[frame_index] * diff) + start_frame
+                print(frame)
                 frame = int(round(frame))
                 obj.keyframe_insert(data_path="location", index=1, frame=frame)
 
@@ -117,6 +119,7 @@ class Import_BFRES(Operator, ImportHelper):
                 obj.location.z = pos_z_curves[0].keys[key_index]
 
                 frame = (pos_z_curves[0].frames[frame_index] * diff) + start_frame
+                print(frame)
                 frame = int(round(frame))
                 obj.keyframe_insert(data_path="location", index=2, frame=frame)
 
@@ -130,6 +133,15 @@ class Import_BFRES(Operator, ImportHelper):
             rot_z_offset = fcam_instance.cam_animation_data.name_to_offset_dictonary["rotation (z)"]
             rot_z_curves = fcam_instance.offset_to_curve_array_dictonary[rot_z_offset]
 
+            obj2 = bpy.data.objects.new( "empty", None )
+
+            # due to the new mechanism of "collection"
+            bpy.context.scene.collection.objects.link(obj2)
+
+            # empty_draw was replaced by empty_display
+            obj2.empty_display_size = 2
+            obj2.empty_display_type = 'PLAIN_AXES'
+
             length = len(rot_x_curves[0].frames)
             print(length, rot_x_curves[0].elements_per_key, len(rot_x_curves[0].keys))
             start_frame = rot_x_curves[0].start_frame
@@ -139,11 +151,12 @@ class Import_BFRES(Operator, ImportHelper):
             for frame_index in range(length):
                 key_index = rot_x_curves[0].elements_per_key * frame_index
 
-                obj.rotation_euler.x = rot_x_curves[0].keys[key_index] / (180 / 3.14)
+                obj2.location.x = rot_x_curves[0].keys[key_index]
 
                 frame = (rot_x_curves[0].frames[frame_index] * diff) + start_frame
+                print(frame)
                 frame = int(round(frame))
-                obj.keyframe_insert(data_path="rotation_euler", index=0, frame=frame)
+                obj2.keyframe_insert(data_path="location", index=0, frame=frame)
 
             length = len(rot_y_curves[0].frames)
             print(length)
@@ -154,11 +167,12 @@ class Import_BFRES(Operator, ImportHelper):
             for frame_index in range(length):
                 key_index = rot_y_curves[0].elements_per_key * frame_index
 
-                obj.rotation_euler.y = rot_y_curves[0].keys[key_index] / (180 / 3.14)
+                obj2.location.y = rot_y_curves[0].keys[key_index]
 
                 frame = (rot_y_curves[0].frames[frame_index] * diff) + start_frame
+                print(frame)
                 frame = int(round(frame))
-                obj.keyframe_insert(data_path="rotation_euler", index=1, frame=frame)
+                obj2.keyframe_insert(data_path="location", index=1, frame=frame)
 
             length = len(rot_z_curves[0].frames)
             print(length)
@@ -169,11 +183,12 @@ class Import_BFRES(Operator, ImportHelper):
             for frame_index in range(length):
                 key_index = rot_z_curves[0].elements_per_key * frame_index
 
-                obj.rotation_euler.z = rot_z_curves[0].keys[key_index] / (180 / 3.14)
+                obj2.location.z = rot_z_curves[0].keys[key_index]
 
                 frame = (rot_z_curves[0].frames[frame_index] * diff) + start_frame
+                print(frame)
                 frame = int(round(frame))
-                obj.keyframe_insert(data_path="rotation_euler", index=2, frame=frame)
+                obj2.keyframe_insert(data_path="location", index=2, frame=frame)
 
         return {'FINISHED'}
 
