@@ -55,7 +55,6 @@ class BFRES:
         for i in range(len(fileOffsets)):
             if fileOffsets[i] != 0 and fileCounts[i] != 0:
                 self.file_type_index_groups[i] = IndexGroup()
-                print(SubfileTypes[i])
 
                 # The offset for this index group's start
                 # FRES start offset + File Offsets start offset + index group offset + actual index group offset
@@ -103,7 +102,6 @@ class IndexGroup:
             #######################
             # Index Group Data Entry (Tree Node) header
             treeNodeEntryOffset = firstTreeNodeEntryOffset + (t * 0x10)
-            print(treeNodeEntryOffset)
 
             treeNodeEntry = struct.unpack(">I H H i i", binary_data[treeNodeEntryOffset:treeNodeEntryOffset + 0x10])
             print(treeNodeEntry)
@@ -122,8 +120,6 @@ class IndexGroup:
 
             self.entries.append(indexGroupEntry)
             last_index = len(self.entries) - 1
-
-            print(treeNodeEntryDataOffset)
 
             # If not root entry
             if t > 0:
@@ -145,8 +141,6 @@ class IndexGroup:
                     pass
 
                 pass
-
-            print("Index Group type: ", type(self.entries[last_index].data))
 
             pass
 
@@ -173,7 +167,6 @@ class FSCN(Subfile):
 
         fcam_index_group_offset = offset_to_FSCN_Section + 0x14 + fscn_header[7]
 
-        print("FCAM Count: ", fcam_count)
         if fcam_count > 0:
             self.fcam_index_group = IndexGroup()
             self.fcam_index_group.convert_binary_to_IndexGroup(binary_data, fcam_index_group_offset, self.parent_bfres_instance)
@@ -227,9 +220,6 @@ class CameraAnimationData:
         self.offset_to_value_dictonary[0x28] = cam_animation_data[10]
         self.name_to_offset_dictonary["twist"] = 0x28
 
-        print(self.offset_to_value_dictonary)
-        print(self.name_to_offset_dictonary)
-
         pass
 
     pass
@@ -280,7 +270,7 @@ class Curve():
         if frame_data_type == Frame_Data_Type.SINGLE:
             return ('f', 4)
         elif frame_data_type == Frame_Data_Type.FLOAT_16_BIT:
-            return ('2s', 2)
+            return ('H', 2)
         elif frame_data_type == Frame_Data_Type.BYTE:
             return ('B', 1)
 
@@ -305,6 +295,11 @@ class Curve():
             return 1
 
         raise ValueError('Unkown Curve_Data_Type value passed')
+
+    def access_bit(self, data, num):
+        base = int(num // 8)
+        shift = int(num % 8)
+        return (data[base] & (1<<shift)) >> shift
 
     def convert_binary_to_Curve(self, binary_data: bytes, offset_to_curve: int):
         #######################
@@ -346,24 +341,37 @@ class Curve():
         frame_format, frame_format_size = self.frame_data_type_to_struct_format_string(self.frame_data_type)
         frame_count = key_count
 
-        if self.frame_data_type == Frame_Data_Type.FLOAT_16_BIT:
-            frame_format = 's'
-            frame_count *= 2
+        # if self.frame_data_type == Frame_Data_Type.FLOAT_16_BIT:
+        #     frame_format = 's'
+        #     frame_count *= 2
 
         format_string = ">" + str(frame_count) + frame_format
         frames = struct.unpack(format_string, binary_data[frame_array_offset:frame_array_offset + (frame_format_size * key_count)])
-        frame_values = frames[0]
+        frame_values = frames
 
         if self.frame_data_type == Frame_Data_Type.FLOAT_16_BIT:
-            bytes_obj = frame_values
-            # Split into pairs for easier parsing
-            L = [bytes_obj[i * 2:(i * 2) + 2] for i in range(len(bytes_obj[::2]))]
+            # Split bytes array into 16 bits (2 bytes) per element for easier parsing
+            # L = [bytes_obj[i * 2:(i * 2) + 2] for i in range(len(bytes_obj[::2]))]
 
-            frame_values = []
-            for pair in L:
-                pair_flipped = bytes([c for t in zip(pair[1::2], pair[::2]) for c in t])
-                float16 = np.frombuffer(pair_flipped, dtype = np.float16) / (1 << 5)
-                frame_values.append(float16[0])
+            # print("Frame 16 bit arrays:")
+            temp_frame_values = []
+            for pair in frame_values:
+                # print(format(pair, '016b'))
+                # print(pair)
+
+                # sign = pair & 0x1
+                # integral = (pair >> 1) & 0x3FF
+                # fractional = pair >> 11
+                #
+                # final = pow(-1, sign) * pow(2, integral - 0x3FF) * (1 + (fractional / 0x1F))
+
+                packed = struct.pack('<i', pair)
+
+                float16 = np.frombuffer(packed, dtype = np.float16) / (1 << 5)
+                # print(float16[0])
+                temp_frame_values.append(float16[0])
+
+            frame_values = temp_frame_values
 
         frame_values = list(frame_values)
         print("Frames: ", frame_values)
@@ -472,12 +480,6 @@ def main(argv):
         fileContent = file.read()
 
         bfres_file = BFRES(binary_data = fileContent)
-
-        fcam_instance = bfres_file.file_type_index_groups[10].entries[1].data.fcam_index_group.entries[1].data
-
-        pos_x_offset = fcam_instance.cam_animation_data.name_to_offset_dictonary["position (x)"]
-        pos_x_curves = fcam_instance.offset_to_curve_array_dictonary[pos_x_offset]
-        print(pos_x_curves[0])
 
 if __name__ == "__main__":
    main(sys.argv[1:])

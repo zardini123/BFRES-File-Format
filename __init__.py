@@ -76,7 +76,6 @@ class Import_BFRES(Operator, ImportHelper):
             obj.empty_display_type = 'PLAIN_AXES'
 
             length = len(pos_x_curves[0].frames)
-            print(length, pos_x_curves[0].elements_per_key, len(pos_x_curves[0].keys))
             start_frame = pos_x_curves[0].start_frame
             end_frame = pos_x_curves[0].end_frame
             diff = end_frame - start_frame
@@ -87,12 +86,10 @@ class Import_BFRES(Operator, ImportHelper):
                 obj.location.x = pos_x_curves[0].keys[key_index]
 
                 frame = (pos_x_curves[0].frames[frame_index] * diff) + start_frame
-                print(frame)
                 frame = int(round(frame))
                 obj.keyframe_insert(data_path="location", index=0, frame=frame)
 
             length = len(pos_y_curves[0].frames)
-            print(length)
             start_frame = pos_y_curves[0].start_frame
             end_frame = pos_y_curves[0].end_frame
             diff = end_frame - start_frame
@@ -103,12 +100,10 @@ class Import_BFRES(Operator, ImportHelper):
                 obj.location.y = pos_y_curves[0].keys[key_index]
 
                 frame = (pos_y_curves[0].frames[frame_index] * diff) + start_frame
-                print(frame)
                 frame = int(round(frame))
                 obj.keyframe_insert(data_path="location", index=1, frame=frame)
 
             length = len(pos_z_curves[0].frames)
-            print(length)
             start_frame = pos_z_curves[0].start_frame
             end_frame = pos_z_curves[0].end_frame
             diff = end_frame - start_frame
@@ -119,7 +114,6 @@ class Import_BFRES(Operator, ImportHelper):
                 obj.location.z = pos_z_curves[0].keys[key_index]
 
                 frame = (pos_z_curves[0].frames[frame_index] * diff) + start_frame
-                print(frame)
                 frame = int(round(frame))
                 obj.keyframe_insert(data_path="location", index=2, frame=frame)
 
@@ -143,7 +137,6 @@ class Import_BFRES(Operator, ImportHelper):
             obj2.empty_display_type = 'PLAIN_AXES'
 
             length = len(rot_x_curves[0].frames)
-            print(length, rot_x_curves[0].elements_per_key, len(rot_x_curves[0].keys))
             start_frame = rot_x_curves[0].start_frame
             end_frame = rot_x_curves[0].end_frame
             diff = end_frame - start_frame
@@ -154,12 +147,10 @@ class Import_BFRES(Operator, ImportHelper):
                 obj2.location.x = rot_x_curves[0].keys[key_index]
 
                 frame = (rot_x_curves[0].frames[frame_index] * diff) + start_frame
-                print(frame)
                 frame = int(round(frame))
                 obj2.keyframe_insert(data_path="location", index=0, frame=frame)
 
             length = len(rot_y_curves[0].frames)
-            print(length)
             start_frame = rot_y_curves[0].start_frame
             end_frame = rot_y_curves[0].end_frame
             diff = end_frame - start_frame
@@ -170,12 +161,10 @@ class Import_BFRES(Operator, ImportHelper):
                 obj2.location.y = rot_y_curves[0].keys[key_index]
 
                 frame = (rot_y_curves[0].frames[frame_index] * diff) + start_frame
-                print(frame)
                 frame = int(round(frame))
                 obj2.keyframe_insert(data_path="location", index=1, frame=frame)
 
             length = len(rot_z_curves[0].frames)
-            print(length)
             start_frame = rot_z_curves[0].start_frame
             end_frame = rot_z_curves[0].end_frame
             diff = end_frame - start_frame
@@ -186,7 +175,6 @@ class Import_BFRES(Operator, ImportHelper):
                 obj2.location.z = rot_z_curves[0].keys[key_index]
 
                 frame = (rot_z_curves[0].frames[frame_index] * diff) + start_frame
-                print(frame)
                 frame = int(round(frame))
                 obj2.keyframe_insert(data_path="location", index=2, frame=frame)
 
