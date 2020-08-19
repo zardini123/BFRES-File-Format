@@ -13,8 +13,39 @@ from . import bfres_file_format
 # ImportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
 from bpy_extras.io_utils import ImportHelper
-from bpy.props import StringProperty, BoolProperty, EnumProperty
+from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty
 from bpy.types import Operator
+
+def apply_animation_curves_to_blender_object(fcam_instance: bfres_file_format.FCAM, action: bpy.types.Action, curve_name: str, data_path: str, data_path_index: int, frame_offset: int, key_modifier = 1):
+    fc = action.fcurves.new(data_path=data_path, index=data_path_index)
+
+    curve_offset = fcam_instance.cam_animation_data.name_to_offset_dictonary[curve_name]
+    curves = fcam_instance.offset_to_curve_array_dictonary[curve_offset]
+
+    for curve_idx, curve in enumerate(curves):
+        existing_points_on_curve = len(fc.keyframe_points)
+
+        frames = len(curve.frames)
+        elements_per_key = curve.elements_per_key
+
+        fc.keyframe_points.add(frames)
+
+        for k in range(existing_points_on_curve, frames):
+            frame_index = k - existing_points_on_curve
+            key_index_base = frame_index * elements_per_key
+
+            diff = curve.end_frame - curve.start_frame
+            frame = (curve.frames[frame_index] * diff) + curve.start_frame + frame_offset
+
+            kp = fc.keyframe_points[k]
+            # TODO: Implement each interpolation method in Curve
+            kp.interpolation = 'BEZIER'
+            kp.co = (frame, curve.keys[key_index_base] * key_modifier)
+
+            # kp.handle_left = kp.co
+
+            kp.handle_left = (kp.co[0] - (curve.keys[key_index_base + 2] * curve.keys[key_index_base + 1] / 3), kp.co[1] - (curve.keys[key_index_base + 3] * curve.keys[key_index_base + 1] / 3))
+            kp.handle_right = (kp.co[0] + (curve.keys[key_index_base + 2] * curve.keys[key_index_base + 1] / 3), kp.co[1] + (curve.keys[key_index_base + 3] * curve.keys[key_index_base + 1] / 3))
 
 class Import_BFRES(Operator, ImportHelper):
     """This appears in the tooltip of the operator and in the generated docs"""
@@ -49,22 +80,16 @@ class Import_BFRES(Operator, ImportHelper):
     #     default='OPT_A',
     # )
 
+    offset: IntProperty(
+        name="Start Frame Offset"
+    )
+
     def execute(self, context):
         with open(self.filepath, mode = 'rb') as f:
             fileContent = f.read()
 
             bfres_file = bfres_file_format.BFRES(binary_data = fileContent)
-
             fcam_instance = bfres_file.file_type_index_groups[10].entries[1].data.fcam_index_group.entries[1].data
-
-            pos_x_offset = fcam_instance.cam_animation_data.name_to_offset_dictonary["position (x)"]
-            pos_x_curves = fcam_instance.offset_to_curve_array_dictonary[pos_x_offset]
-
-            pos_y_offset = fcam_instance.cam_animation_data.name_to_offset_dictonary["position (y)"]
-            pos_y_curves = fcam_instance.offset_to_curve_array_dictonary[pos_y_offset]
-
-            pos_z_offset = fcam_instance.cam_animation_data.name_to_offset_dictonary["position (z)"]
-            pos_z_curves = fcam_instance.offset_to_curve_array_dictonary[pos_z_offset]
 
             obj = bpy.data.objects.new( "empty", None )
 
@@ -75,57 +100,26 @@ class Import_BFRES(Operator, ImportHelper):
             obj.empty_display_size = 2
             obj.empty_display_type = 'PLAIN_AXES'
 
-            length = len(pos_x_curves[0].frames)
-            start_frame = pos_x_curves[0].start_frame
-            end_frame = pos_x_curves[0].end_frame
-            diff = end_frame - start_frame
+            # Setup animation data for object
+            obj.animation_data_clear()
+            obj.animation_data_create()
+            action = obj.animation_data.action = bpy.data.actions.new("groovy")
 
-            for frame_index in range(length):
-                key_index = pos_x_curves[0].elements_per_key * frame_index
+            # BotW coordinate system:
+            #   +X east
+            #   +Z south
+            #   +Y up
+            # Blender coordinate system:
+            #   +X east
+            #   +Y north
+            #   +Z up
 
-                obj.location.x = pos_x_curves[0].keys[key_index]
-
-                frame = (pos_x_curves[0].frames[frame_index] * diff) + start_frame
-                frame = int(round(frame))
-                obj.keyframe_insert(data_path="location", index=0, frame=frame)
-
-            length = len(pos_y_curves[0].frames)
-            start_frame = pos_y_curves[0].start_frame
-            end_frame = pos_y_curves[0].end_frame
-            diff = end_frame - start_frame
-
-            for frame_index in range(length):
-                key_index = pos_y_curves[0].elements_per_key * frame_index
-
-                obj.location.y = pos_y_curves[0].keys[key_index]
-
-                frame = (pos_y_curves[0].frames[frame_index] * diff) + start_frame
-                frame = int(round(frame))
-                obj.keyframe_insert(data_path="location", index=1, frame=frame)
-
-            length = len(pos_z_curves[0].frames)
-            start_frame = pos_z_curves[0].start_frame
-            end_frame = pos_z_curves[0].end_frame
-            diff = end_frame - start_frame
-
-            for frame_index in range(length):
-                key_index = pos_z_curves[0].elements_per_key * frame_index
-
-                obj.location.z = pos_z_curves[0].keys[key_index]
-
-                frame = (pos_z_curves[0].frames[frame_index] * diff) + start_frame
-                frame = int(round(frame))
-                obj.keyframe_insert(data_path="location", index=2, frame=frame)
-
-            # TODO: Figure out aim direction
-            rot_x_offset = fcam_instance.cam_animation_data.name_to_offset_dictonary["rotation (x)"]
-            rot_x_curves = fcam_instance.offset_to_curve_array_dictonary[rot_x_offset]
-
-            rot_y_offset = fcam_instance.cam_animation_data.name_to_offset_dictonary["rotation (y)"]
-            rot_y_curves = fcam_instance.offset_to_curve_array_dictonary[rot_y_offset]
-
-            rot_z_offset = fcam_instance.cam_animation_data.name_to_offset_dictonary["rotation (z)"]
-            rot_z_curves = fcam_instance.offset_to_curve_array_dictonary[rot_z_offset]
+            # X axis flipped
+            apply_animation_curves_to_blender_object(fcam_instance, action, "position (x)", "location", 0, self.offset, key_modifier = -1)
+            # Curve Y applied to Z axis
+            apply_animation_curves_to_blender_object(fcam_instance, action, "position (y)", "location", 2, self.offset)
+            # Curve Z applied to Y axis
+            apply_animation_curves_to_blender_object(fcam_instance, action, "position (z)", "location", 1, self.offset)
 
             obj2 = bpy.data.objects.new( "empty", None )
 
@@ -136,47 +130,17 @@ class Import_BFRES(Operator, ImportHelper):
             obj2.empty_display_size = 2
             obj2.empty_display_type = 'PLAIN_AXES'
 
-            length = len(rot_x_curves[0].frames)
-            start_frame = rot_x_curves[0].start_frame
-            end_frame = rot_x_curves[0].end_frame
-            diff = end_frame - start_frame
+            # Setup animation data for object
+            obj2.animation_data_clear()
+            obj2.animation_data_create()
+            action2 = obj2.animation_data.action = bpy.data.actions.new("groovy")
 
-            for frame_index in range(length):
-                key_index = rot_x_curves[0].elements_per_key * frame_index
-
-                obj2.location.x = rot_x_curves[0].keys[key_index]
-
-                frame = (rot_x_curves[0].frames[frame_index] * diff) + start_frame
-                frame = int(round(frame))
-                obj2.keyframe_insert(data_path="location", index=0, frame=frame)
-
-            length = len(rot_y_curves[0].frames)
-            start_frame = rot_y_curves[0].start_frame
-            end_frame = rot_y_curves[0].end_frame
-            diff = end_frame - start_frame
-
-            for frame_index in range(length):
-                key_index = rot_y_curves[0].elements_per_key * frame_index
-
-                obj2.location.y = rot_y_curves[0].keys[key_index]
-
-                frame = (rot_y_curves[0].frames[frame_index] * diff) + start_frame
-                frame = int(round(frame))
-                obj2.keyframe_insert(data_path="location", index=1, frame=frame)
-
-            length = len(rot_z_curves[0].frames)
-            start_frame = rot_z_curves[0].start_frame
-            end_frame = rot_z_curves[0].end_frame
-            diff = end_frame - start_frame
-
-            for frame_index in range(length):
-                key_index = rot_z_curves[0].elements_per_key * frame_index
-
-                obj2.location.z = rot_z_curves[0].keys[key_index]
-
-                frame = (rot_z_curves[0].frames[frame_index] * diff) + start_frame
-                frame = int(round(frame))
-                obj2.keyframe_insert(data_path="location", index=2, frame=frame)
+            # X axis flipped
+            apply_animation_curves_to_blender_object(fcam_instance, action2, "rotation (x)", "location", 0, self.offset, key_modifier = -1)
+            # Curve Y applied to Z axis
+            apply_animation_curves_to_blender_object(fcam_instance, action2, "rotation (y)", "location", 2, self.offset)
+            # Curve Z applied to Y axis
+            apply_animation_curves_to_blender_object(fcam_instance, action2, "rotation (z)", "location", 1, self.offset)
 
         return {'FINISHED'}
 

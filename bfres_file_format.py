@@ -301,6 +301,38 @@ class Curve():
         shift = int(num % 8)
         return (data[base] & (1<<shift)) >> shift
 
+    # https://github.com/jam1garner/Smash-Forge/blob/e816fd5d971cad03f4a8d81ddd0d8245b1b0dec8/Smash%20Forge/IO/FileData.cs#L114
+    def ToFloat(self, hbits: int):
+        mant = hbits & 0x03ff;            # 10 bits mantissa
+        exp = hbits & 0x7c00;            # 5 bits exponent
+        if exp == 0x7c00:                   # NaN/Inf
+            exp = 0x3fc00                    # -> NaN/Inf
+
+        elif exp != 0:                  # normalized value
+            exp += 0x1c000                   # exp - 15 + 127
+            if mant == 0 and exp > 0x1c400:  # smooth transition
+                packed = struct.pack('<I', (hbits & 0x8000) << 16 | exp << 13 | 0x3ff)
+                return struct.unpack('<f', packed)
+
+        elif mant != 0:                  # && exp==0 -> subnormal
+            exp = 0x1c400                    # make it normal
+            condition = True
+
+            while condition:
+                mant <<= 1;                   # mantissa * 2
+                exp -= 0x400;                 # decrease exp by 1
+                condition = ((mant & 0x400) == 0)  # while not normal
+
+            mant &= 0x3ff;                    # discard subnormal bit
+                                            # else +/-0 -> +/-0
+                                                                    #combine all parts
+        final = (hbits & 0x8000) << 16 | (exp | mant) << 13 # sign  << ( 31 - 15 )  # value << ( 23 - 10 ))
+        print(format(final, '032b'))
+        packed = struct.pack('<I', final)
+        return struct.unpack('<f', packed)
+
+    # def convert_hermite_control_points_to_bezier_control_points(self, )
+
     def convert_binary_to_Curve(self, binary_data: bytes, offset_to_curve: int):
         #######################
         # Curve Header
@@ -313,10 +345,12 @@ class Curve():
 
         i = curve_header[0]
 
+        print("Curve Flags Offset: ", offset_to_curve)
+
         self.frame_data_type = Frame_Data_Type(i >> 0 & 0x3)
         self.key_data_type = Key_Data_Type(i >> 2 & 0x3)
         self.curve_data_type = Curve_Data_Type(i >> 4 & 0x7)
-        print("Frames Data Type: ", self.frame_data_type)
+        print("Frames Data Type: ", self.frame_data_type, i >> 0 & 0x3)
         print("Keys Data Type: ", self.key_data_type)
         print("Interpolation Type: ", self.curve_data_type)
 
@@ -345,6 +379,9 @@ class Curve():
         #     frame_format = 's'
         #     frame_count *= 2
 
+        print("Curve Frames Array Offset: ", frame_array_offset)
+        print("Curve Keys Array Offset", key_array_offset)
+
         format_string = ">" + str(frame_count) + frame_format
         frames = struct.unpack(format_string, binary_data[frame_array_offset:frame_array_offset + (frame_format_size * key_count)])
         frame_values = frames
@@ -356,8 +393,15 @@ class Curve():
             # print("Frame 16 bit arrays:")
             temp_frame_values = []
             for pair in frame_values:
-                # print(format(pair, '016b'))
+                print(format(pair, '016b'))
+                print(hex(pair))
                 # print(pair)
+
+                # float16 = self.ToFloat(pair)
+                # print(float16)
+
+                float16 = pair / frame_values[len(frame_values) - 1]
+                temp_frame_values.append(float16)
 
                 # sign = pair & 0x1
                 # integral = (pair >> 1) & 0x3FF
@@ -365,11 +409,11 @@ class Curve():
                 #
                 # final = pow(-1, sign) * pow(2, integral - 0x3FF) * (1 + (fractional / 0x1F))
 
-                packed = struct.pack('<i', pair)
+                # packed = struct.pack('<i', pair)
 
-                float16 = np.frombuffer(packed, dtype = np.float16) / (1 << 5)
+                # float16 = np.frombuffer(packed, dtype = np.float16) / (1 << 5)
                 # print(float16[0])
-                temp_frame_values.append(float16[0])
+                # temp_frame_values.append(float16[0])
 
             frame_values = temp_frame_values
 
@@ -385,6 +429,7 @@ class Curve():
 
         # Granularity of keys will be garbage if INT16 or SBYTE.  Data_scale and data_offset fixes that
         keys = [(x * self.data_scale) for x in keys]
+
         for i in range(0, len(keys), self.elements_per_key):
             keys[i] += self.data_offset
             print(keys[i:i + self.elements_per_key])
